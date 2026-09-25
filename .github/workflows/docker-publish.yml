@@ -87,7 +87,7 @@ jobs:
           SOURCE_REVISION: ${{ github.sha }}
         run: |
           set -euo pipefail
-          docker tag minio:smoke "$DOCKERHUB_NAMESPACE/minio:docker"
+          docker tag minio:smoke "$DOCKERHUB_NAMESPACE/minio:latest"
           docker tag minio:smoke "$DOCKERHUB_NAMESPACE/minio:$SOURCE_REVISION"
-          docker push "$DOCKERHUB_NAMESPACE/minio:docker"
           docker push "$DOCKERHUB_NAMESPACE/minio:$SOURCE_REVISION"
+          docker push "$DOCKERHUB_NAMESPACE/minio:latest"

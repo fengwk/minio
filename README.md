@@ -114,7 +114,8 @@ docker run -p 9000:9000 -p 9001:9001 myminio:minio server /data --console-addres
 ```
 
 Pushes to the `docker` branch build `linux/amd64`, verify startup and signed S3 I/O,
-and publish `<DOCKERHUB_NAMESPACE>/minio:docker` plus an immutable commit SHA tag.
+and publish `<DOCKERHUB_NAMESPACE>/minio:latest` plus an immutable commit SHA tag.
+An untagged `<DOCKERHUB_NAMESPACE>/minio` image reference resolves to `:latest`.
 Configure `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, and `DOCKERHUB_NAMESPACE` as
 GitHub Actions secrets before pushing. The CI smoke test uses disposable data;
 it does not verify compatibility with an existing MinIO data volume. Keep the
