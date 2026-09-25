@@ -1,5 +1,7 @@
 .git
 .github
+/minio
+/mc
 default.etcd
 *.gz
 *.tar.gz

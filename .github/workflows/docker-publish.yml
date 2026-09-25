@@ -1,0 +1,93 @@
+# Build the community server from this fork and publish only after a startup smoke test.
+name: docker-publish
+
+on:
+  push:
+    branches:
+      - docker
+  workflow_dispatch:
+
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.ref_name == 'docker'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare source metadata
+        id: source
+        run: |
+          set -euo pipefail
+          date="$(date -u -d "$(git log -1 --format=%cI)" +%Y-%m-%dT%H:%M:%SZ)"
+          echo "date=$date" >> "$GITHUB_OUTPUT"
+      - name: Require Docker Hub secrets
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DOCKERHUB_NAMESPACE: ${{ secrets.DOCKERHUB_NAMESPACE }}
+        run: |
+          set -euo pipefail
+          test -n "$DOCKERHUB_USERNAME"
+          test -n "$DOCKERHUB_TOKEN"
+          test -n "$DOCKERHUB_NAMESPACE"
+      - uses: docker/setup-buildx-action@v3
+      - name: Build local linux/amd64 image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: minio:smoke
+          build-args: |
+            SOURCE_REVISION=${{ github.sha }}
+            SOURCE_DATE=${{ steps.source.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Verify container startup and S3 readiness
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name minio-smoke \
+            -e MINIO_ROOT_USER=smoketest \
+            -e MINIO_ROOT_PASSWORD=smoketest-only-local-2026 \
+            -p 127.0.0.1:19000:9000 \
+            minio:smoke
+          trap 'docker rm -f minio-smoke >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:19000/minio/health/ready >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          if ! curl -fsS http://127.0.0.1:19000/minio/health/ready >/dev/null; then
+            docker logs minio-smoke
+            exit 1
+          fi
+          auth="smoketest:smoketest-only-local-2026"
+          bucket="http://127.0.0.1:19000/minio-smoke-bucket"
+          curl -fsS --aws-sigv4 aws:amz:us-east-1:s3 -u "$auth" -X PUT "$bucket" >/dev/null
+          printf 'ok' | curl -fsS --aws-sigv4 aws:amz:us-east-1:s3 \
+            -u "$auth" -X PUT --data-binary @- "$bucket/probe.txt" >/dev/null
+          test "$(curl -fsS --aws-sigv4 aws:amz:us-east-1:s3 \
+            -u "$auth" "$bucket/probe.txt")" = ok
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Publish mutable and immutable tags
+        env:
+          DOCKERHUB_NAMESPACE: ${{ secrets.DOCKERHUB_NAMESPACE }}
+          SOURCE_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker tag minio:smoke "$DOCKERHUB_NAMESPACE/minio:docker"
+          docker tag minio:smoke "$DOCKERHUB_NAMESPACE/minio:$SOURCE_REVISION"
+          docker push "$DOCKERHUB_NAMESPACE/minio:docker"
+          docker push "$DOCKERHUB_NAMESPACE/minio:$SOURCE_REVISION"

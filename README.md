@@ -95,8 +95,10 @@ For application developers, see <https://docs.min.io/enterprise/aistor-object-st
 
 ## Build Docker Image
 
-You can use the `docker build .` command to build a Docker image on your local host machine.
-You must first [build MinIO](#install-from-source) and ensure the `minio` binary exists in the project root.
+The default `Dockerfile` compiles the checked-out source in a Go builder image
+and copies only the server binary, entrypoint, licenses, CA certificates, and
+health-check tooling into the runtime image. It does not pull the discontinued
+`minio/minio` base image or download a precompiled MinIO binary.
 
 The following command builds the Docker image using the default `Dockerfile` in the root project directory with the repository and image tag `myminio:minio`
 
@@ -108,11 +110,15 @@ Use `docker image ls` to confirm the image exists in your local repository.
 You can run the server using standard Docker invocation:
 
 ```sh
-docker run -p 9000:9000 -p 9001:9001 myminio:minio server /tmp/minio --console-address :9001
+docker run -p 9000:9000 -p 9001:9001 myminio:minio server /data --console-address :9001
 ```
 
-Complete documentation for building Docker containers, managing custom images, or loading images into orchestration platforms is out of scope for this documentation.
-You can modify the `Dockerfile` and `dockerscripts/docker-entrypoint.sh` as-needed to reflect your specific image requirements.
+Pushes to the `docker` branch build `linux/amd64`, verify startup and signed S3 I/O,
+and publish `<DOCKERHUB_NAMESPACE>/minio:docker` plus an immutable commit SHA tag.
+Configure `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, and `DOCKERHUB_NAMESPACE` as
+GitHub Actions secrets before pushing. The CI smoke test uses disposable data;
+it does not verify compatibility with an existing MinIO data volume. Keep the
+running MinIO image and data backup until a separate-volume upgrade test passes.
 
 See the [MinIO Container](https://docs.min.io/community/minio-object-store/operations/deployments/baremetal-deploy-minio-as-a-container.html#deploy-minio-container) documentation for more guidance on running MinIO within a Container image.
 
